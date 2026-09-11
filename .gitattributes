@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.sql text eol=lf
+*.csv text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.parquet binary
+*.duckdb binary

@@ -1,0 +1,56 @@
+name: recon_control_tower
+version: "1.0.0"
+config-version: 2
+
+profile: recon_control_tower
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Tolerances and thresholds live here, not scattered through the SQL, so that
+# changing a reconciliation policy is a one-line, reviewable change.
+vars:
+  # Tier 3 tolerance: an amount difference is acceptable if it is within
+  # EITHER an absolute floor (small fixed fees) OR a relative band (ad valorem
+  # fees like interchange). Both, because card fees are "x bps + y cents".
+  tolerance_abs_cents: 50
+  tolerance_bps: 250
+
+  # Settlement windows, in calendar days, by funds flow. An external record
+  # landing inside the window is timing, not a break.
+  window_days_ach: 2
+  window_days_card: 3
+  window_days_wire: 1
+
+  # Control thresholds, mirrored in src/checks/run_controls.py
+  match_rate_floor_overall: 0.990
+  match_rate_floor_by_flow: 0.980
+  gl_tieout_tolerance_cents: 100
+  sla_breach_age_days: 5
+
+models:
+  recon_control_tower:
+    +materialized: table
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  recon_control_tower:
+    +schema: reference
+    +quote_columns: false
+
+tests:
+  recon_control_tower:
+    +store_failures: true
+    +schema: test_failures

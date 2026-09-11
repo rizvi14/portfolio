@@ -1,0 +1,10 @@
+# Local DuckDB profile. No credentials — this file is safe to commit, which is
+# part of the point: anyone can clone the repo and reproduce the warehouse.
+recon_control_tower:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('RECON_DB', '../data/processed/recon.duckdb') }}"
+      schema: main
+      threads: 4

@@ -22,6 +22,7 @@ data/processed/*
 !data/**/sample_*.csv
 *.parquet
 *.db
+*.duckdb
 *.sqlite3
 *.xlsx
 *.zip

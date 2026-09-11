@@ -1,0 +1,5 @@
+# Pinned: dbt-duckdb wheels stop at Python 3.13, so create the venv with
+#   py -3.13 -m venv .venv
+dbt-core==1.12.4
+dbt-duckdb==1.11.0
+duckdb>=1.1
