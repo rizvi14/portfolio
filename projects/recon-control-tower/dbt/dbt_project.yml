@@ -47,7 +47,8 @@ vars:
   # export slices the trailing 60.
   recon_history_days: 130
 
-  # Control thresholds, mirrored in src/checks/run_controls.py
+  # Control thresholds. src/checks/run_controls.py reads them from this file
+  # rather than carrying its own copy, so a policy change is one edit.
   match_rate_floor_overall: 0.990
   match_rate_floor_by_flow: 0.980
   gl_tieout_tolerance_cents: 100

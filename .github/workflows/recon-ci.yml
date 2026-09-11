@@ -1,0 +1,73 @@
+# Reconciliation control tower - build the warehouse from a cold clone and
+# refuse the merge if any reconciliation control fails.
+#
+# The whole pipeline is deterministic (seeded generator, Parquet in, dbt over
+# DuckDB), so CI is the same run a developer does locally, and the output it
+# attaches is the same control summary a recon lead would read.
+
+name: recon-control-tower
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "projects/recon-control-tower/**"
+      - ".github/workflows/recon-ci.yml"
+  pull_request:
+    paths:
+      - "projects/recon-control-tower/**"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: projects/recon-control-tower
+
+jobs:
+  controls:
+    name: generate, build, and run controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"          # dbt-duckdb wheels stop here; see requirements.txt
+          cache: pip
+          cache-dependency-path: projects/recon-control-tower/requirements.txt
+
+      - name: install
+        run: pip install -r requirements.txt
+
+      - name: generate synthetic funds flows (seed 42)
+        run: python -m src.generate --seed 42
+
+      - name: manifest must match the committed one
+        # the generator is deterministic; if the manifest drifts, either the
+        # generator changed and the commit should say so, or it is no longer
+        # deterministic and nothing downstream is reproducible
+        run: |
+          git diff --exit-code -- data/raw/_manifest.json \
+            || { echo "::error::data/raw/_manifest.json changed - regenerate and commit, or fix determinism"; exit 1; }
+
+      - name: dbt build (models, seeds, and every control)
+        working-directory: projects/recon-control-tower/dbt
+        run: dbt build --profiles-dir . --no-partial-parse
+
+      - name: ground-truth quarantine
+        run: python -m src.checks.check_no_ground_truth_leakage
+
+      - name: control summary
+        run: python -m src.checks.run_controls --skip-build | tee control-summary.txt
+
+      - name: attach the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-run-${{ github.sha }}
+          path: |
+            projects/recon-control-tower/control-summary.txt
+            projects/recon-control-tower/dbt/target/manifest.json
+            projects/recon-control-tower/dbt/target/run_results.json
+          retention-days: 30

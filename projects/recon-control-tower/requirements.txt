@@ -3,3 +3,4 @@
 dbt-core==1.12.4
 dbt-duckdb==1.11.0
 duckdb>=1.1
+pyyaml>=6.0    # run_controls reads dbt_project.yml; dbt-core already depends on it
