@@ -1,0 +1,7 @@
+return_code,description,return_window_days,is_administrative,retryable
+R01,Insufficient funds,2,false,true
+R02,Account closed,2,false,false
+R03,No account / unable to locate,2,false,false
+R05,Unauthorized debit to consumer account,60,false,false
+R10,Customer advises originator not known / not authorized,60,false,false
+R29,Corporate customer advises not authorized,2,false,false

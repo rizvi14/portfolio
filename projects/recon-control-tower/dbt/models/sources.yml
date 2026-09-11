@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  # Raw systems of record, read straight from the generator's Parquet files.
+  # dbt-duckdb's external_location means no load step and no write contention
+  # with the generator: files in, warehouse out.
+  - name: raw
+    description: Immutable Parquet extracts produced by src/generate.py.
+    meta:
+      external_location: "../data/raw/{name}.parquet"
+    tables:
+      - name: internal_ledger
+        description: Our books. One row per ledger entry; the subledger side of every reconciliation.
+      - name: bank_statement_lines
+        description: Partner-bank statement lines for ACH and wire, with messy free-text descriptions.
+      - name: card_settlement
+        description: Card processor settlement file. Authorisations are memo holds and are not in scope; only clearings move money.
+      - name: fx_rates
+        description: Daily USD rates for non-USD wires.
+
+  # Quarantined. Only the evaluation mart may read this, and
+  # src/checks/check_no_ground_truth_leakage.py fails the build if anything on
+  # the matching path does. If a matcher could see the answers, its precision
+  # and recall would be meaningless.
+  - name: ground_truth
+    description: Seeded break labels. Evaluation only - never an input to matching.
+    meta:
+      external_location: "../data/raw/{name}.parquet"
+    tables:
+      - name: break_truth

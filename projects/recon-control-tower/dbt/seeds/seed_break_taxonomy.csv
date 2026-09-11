@@ -1,0 +1,16 @@
+break_code,break_family,flow_scope,display_name,is_true_break,default_severity,owner_team,sla_business_days,typical_root_cause,gl_treatment
+in_transit,timing,all,In transit (within window),false,none,none,0,External record not yet received; expected settlement lag,Cash in transit - no action
+partially_settled,timing,all,Partially settled (remainder outstanding),false,none,none,0,Settlement arriving in legs; first leg received and remainder inside the observed leg-to-leg gap,Cash partially applied - no action
+timing_late,timing,all,Late settlement (past window),true,medium,Banking Partner,3,Partner file delay or cutoff miss,Cash in transit - investigate
+missing_external,orphan,all,Internal only - no external record,true,high,Engineering,2,Payment never left the platform or was never posted by the partner,Clearing account overstated
+missing_internal,orphan,all,External only - no internal record,true,high,Finance,2,Unbooked bank item or misrouted ledger entry,Cash overstated vs GL
+duplicate_internal,orphan,all,Duplicate internal posting,true,high,Engineering,1,Ingestion retry without an idempotency key,Clearing account overstated by the duplicate
+duplicate_external,orphan,all,Duplicate external record,true,critical,Banking Partner,1,Statement file redelivered and re-ingested,Cash overstated; masks the match rate
+return_unlinked,orphan,ach,ACH return with no linked original,true,high,Product,2,Original debit booked under a different reference or never booked,Returns payable understated
+bank_adjustment,orphan,all,Bank-originated fee / interest / memo,true,low,Finance,5,Partner bank fee or interest not yet booked,Book to fees or interest income
+chargeback_pair,orphan,card,Chargeback and representment pair,true,medium,Product,5,Dispute lifecycle entries lack the original ARN,Net to zero once paired; provision if unpaired
+fee_interchange,variance,card,Interchange netted by processor,true,medium,Finance,3,Processor remits net; ledger books gross,Reclass variance to interchange expense
+fee_lifting,variance,wire,Correspondent lifting fee,true,medium,Finance,3,Intermediary bank deducted a fee in transit,Reclass variance to bank fees
+auth_capture,variance,card,Authorisation vs capture drift,true,low,Product,5,Tip added or partial capture after auth,Adjust to settled amount
+transposition,variance,all,Digit transposition,true,high,Engineering,1,Manual keying error on one side,Correct the erroneous side
+amount_variance_other,variance,all,Unexplained amount variance,true,high,Finance,2,Unknown - requires investigation,Recon difference until explained

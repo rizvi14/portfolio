@@ -173,12 +173,18 @@ def ach_batch_aggregation(rng, txn):
     """
     n = rng.randint(3, 6)
     base = txn["internal"][0]
+    # A settlement batch is its own unit of account. Give it an id no other
+    # transaction shares, so aggregate matching sums exactly this batch.
+    agg_batch = f"{txn['batch_id']}-AGG{txn['seq']}"
+    txn["batch_id"] = agg_batch
+    base["batch_id"] = agg_batch
     total = base["amount_cents"]
     for i in range(n - 1):
         sib = dict(base)
         sib["ledger_entry_id"] = f"{base['ledger_entry_id']}-B{i + 1}"
         sib["amount_cents"] = max(100, int(base["amount_cents"] * rng.uniform(0.4, 1.6)))
         sib["external_ref"] = ""  # individual traces are not exposed in a batch
+        sib["batch_id"] = agg_batch
         sib["counterparty_name"] = rng.choice(txn["counterparty_pool"])
         total += sib["amount_cents"]
         txn["internal"].append(sib)
@@ -186,7 +192,8 @@ def ach_batch_aggregation(rng, txn):
     for row in txn["external"]:
         sign = 1 if row["amount_signed_cents"] > 0 else -1
         row["amount_signed_cents"] = sign * total
-        row["description"] = f"ACH BATCH SETTLEMENT BATCH#{txn['batch_id']} {n} ITEMS"
+        row["batch_id"] = agg_batch
+        row["description"] = f"ACH BATCH SETTLEMENT BATCH#{agg_batch} {n} ITEMS"
     _gt(txn, "ach_batch_aggregation", "none", amount_cents=total,
         has_difference=False, batch_size=n)
 
@@ -329,7 +336,10 @@ def wire_cutoff_weekend(rng, txn):
         row["value_date"] = _next_business_day(row["value_date"], 1)
         row["available_from"] = _next_business_day(row["available_from"], 1)
         rolled = row["value_date"]
-    _gt(txn, "wire_cutoff_weekend", "internal_only", rolled_to=rolled)
+    # Not a defect: a calendar-aware settlement window treats a Friday wire
+    # landing Monday as in transit. A naive T+0 window would flag every one of
+    # these - RCA-003 quantifies that false-positive load.
+    _gt(txn, "wire_cutoff_weekend", "none", rolled_to=rolled)
 
 
 def wire_amount_transposition(rng, txn):

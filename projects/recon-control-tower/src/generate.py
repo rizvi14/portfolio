@@ -250,6 +250,7 @@ def make_txn(rng, seq, date, flow, accounts, counterparties) -> dict:
                 "amount_signed_cents": signed,
                 "currency": currency,
                 "description": desc,
+                "counterparty_account_hash": cpty_hash(cpty),
                 "bai_code": bai,
                 "batch_id": batch_id,
                 "available_from": value_date,
@@ -286,7 +287,8 @@ DDL = {
     "bank_statement_lines": """
         bank_txn_id VARCHAR, file_id VARCHAR, statement_date DATE,
         value_date DATE, amount_signed_cents BIGINT, currency VARCHAR,
-        description VARCHAR, bai_code VARCHAR, batch_id VARCHAR,
+        description VARCHAR, counterparty_account_hash VARCHAR,
+        bai_code VARCHAR, batch_id VARCHAR,
         available_from DATE, is_redelivered BOOLEAN
     """,
     "card_settlement": """

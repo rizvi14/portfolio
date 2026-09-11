@@ -14,17 +14,38 @@ clean-targets: ["target", "dbt_packages"]
 # Tolerances and thresholds live here, not scattered through the SQL, so that
 # changing a reconciliation policy is a one-line, reviewable change.
 vars:
-  # Tier 3 tolerance: an amount difference is acceptable if it is within
-  # EITHER an absolute floor (small fixed fees) OR a relative band (ad valorem
-  # fees like interchange). Both, because card fees are "x bps + y cents".
+  # Amount tolerance: a difference is acceptable if it is within EITHER an
+  # absolute floor OR a relative band, whichever is larger.
+  #
+  # 25 bps is deliberately tight. Tolerance exists to absorb representation
+  # noise (FX rounding, a sub-dollar rounding fee) - NOT to absorb fees you
+  # have not modelled. At 250 bps the entire interchange booking defect in
+  # RCA-002 (~180 bps) disappears behind a green match rate; see that RCA for
+  # the sensitivity table.
   tolerance_abs_cents: 50
-  tolerance_bps: 250
+  tolerance_bps_ach: 25
+  tolerance_bps_card: 25
+  tolerance_bps_wire: 0      # fixed fees + FX rounding only; a bps band hides lifting fees
 
-  # Settlement windows, in calendar days, by funds flow. An external record
-  # landing inside the window is timing, not a break.
-  window_days_ach: 2
-  window_days_card: 3
-  window_days_wire: 1
+  # Settlement windows in BUSINESS days by funds flow, plus one grace day. An
+  # external record landing inside window + grace is in transit, not a break.
+  window_days_ach: 1
+  window_days_card: 2
+  window_days_wire: 0
+  timing_grace_business_days: 1
+
+  # The age at which an unmatched item becomes an exception is NOT the policy
+  # window - it is calibrated per rail from observed arrival behaviour in
+  # int_settlement_profile, floored at window + grace above. This is the
+  # ceiling on that calibration. A self-widening threshold with no cap will
+  # eventually decide nothing is ever late; when a rail's p99 pushes into this
+  # number, escalate the rail rather than raise the ceiling.
+  investigation_threshold_ceiling_bd: 6
+
+  # How many daily runs the exception history replays. Covers the whole
+  # generated period so the evaluation mart grades every run; the dashboard
+  # export slices the trailing 60.
+  recon_history_days: 130
 
   # Control thresholds, mirrored in src/checks/run_controls.py
   match_rate_floor_overall: 0.990

@@ -1,0 +1,28 @@
+version: 2
+
+seeds:
+  - name: seed_break_taxonomy
+    description: >
+      The break taxonomy every classified exception must map to. `is_true_break`
+      is the line between a reconciling item (expected, no action) and an
+      exception (investigate). Owner team and SLA drive routing and aging.
+    columns:
+      - name: break_code
+        tests: [unique, not_null]
+      - name: default_severity
+        tests:
+          - relationships:
+              to: ref('seed_severity_matrix')
+              field: severity
+  - name: seed_severity_matrix
+    columns:
+      - name: severity
+        tests: [unique, not_null]
+  - name: seed_gl_account_map
+    columns:
+      - name: gl_account_code
+        tests: [unique, not_null]
+  - name: seed_ach_return_codes
+    columns:
+      - name: return_code
+        tests: [unique, not_null]

@@ -1,0 +1,6 @@
+severity,exposure_floor_cents,max_age_business_days,escalation
+critical,2500000,1,Head of Reconciliation + Engineering on-call
+high,500000,2,Reconciliation lead
+medium,50000,3,Owning team queue
+low,0,5,Weekly review
+none,0,0,No action - reconciling item

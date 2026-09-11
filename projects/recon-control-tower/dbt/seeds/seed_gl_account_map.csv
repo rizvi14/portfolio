@@ -1,0 +1,8 @@
+gl_account_code,gl_account_name,account_type,normal_balance,is_clearing,recon_required
+1010,Cash - Partner Bank FBO,asset,debit,false,true
+1020,Cash in Transit - ACH,asset,debit,true,true
+1025,Cash in Transit - Wire,asset,debit,true,true
+1040,Card Clearing,asset,debit,true,true
+1050,ACH Clearing - Outbound,asset,debit,true,true
+1060,Wire Clearing,asset,debit,true,true
+1095,Reconciliation Difference - Unresolved,asset,debit,true,true
