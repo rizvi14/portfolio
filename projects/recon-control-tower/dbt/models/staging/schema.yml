@@ -5,40 +5,48 @@ models:
     description: Canonicalised ledger entries. Sign convention applied here and nowhere else.
     columns:
       - name: ledger_entry_id
-        tests: [unique, not_null]
+        data_tests: [unique, not_null]
       - name: flow_type
-        tests:
-          - accepted_values: {values: ['ach', 'card', 'wire']}
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ach", "card", "wire"]
       - name: direction
-        tests:
-          - accepted_values: {values: ['credit', 'debit']}
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["credit", "debit"]
       - name: signed_amount_cents
-        tests: [not_null]
+        data_tests: [not_null]
       - name: gl_account_code
-        tests:
+        data_tests:
           - relationships:
-              to: ref('seed_gl_account_map')
-              field: gl_account_code
+              arguments:
+                to: ref('seed_gl_account_map')
+                field: gl_account_code
 
   - name: stg_partner_bank_statement
     description: Bank statement lines with references and counterparties parsed out of free text.
     columns:
       - name: bank_txn_id
-        tests: [unique, not_null]
+        data_tests: [unique, not_null]
       - name: amount_signed_cents
-        tests: [not_null]
+        data_tests: [not_null]
       - name: flow_type
-        tests:
-          - accepted_values: {values: ['ach', 'wire']}
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ach", "wire"]
 
   - name: stg_card_processor_settlement
     columns:
       - name: processor_txn_id
-        tests: [unique, not_null]
+        data_tests: [unique, not_null]
       - name: signed_amount_cents
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: stg_fx_rates
-    tests:
+    data_tests:
       - unique_combination:
-          combination: [rate_date, currency]
+          arguments:
+            combination: [rate_date, currency]

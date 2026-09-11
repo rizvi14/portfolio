@@ -1,0 +1,173 @@
+version: 2
+
+models:
+  - name: int_recon_events__unioned
+    description: >
+      The reconciliation item contract. Ledger entries, bank statement lines
+      and processor settlements all become one shape here - side, flow, signed
+      minor units, reference, counterparty key, the date the record became
+      VISIBLE - and every tier below matches against this shape rather than
+      against three different schemas. Adding a fourth feed is a staging model
+      and a union, not a rewrite of the waterfall.
+    columns:
+      - name: event_id
+        description: Stable identity for one side of one item.
+        data_tests: [unique, not_null]
+      - name: side
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["internal", "external"]
+      - name: flow_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ach", "card", "wire"]
+      - name: signed_amount_cents
+        description: >
+          Integer minor units, signed by direction. Money is never a float in
+          this project: a tolerance comparison against a binary fraction
+          manufactures breaks that do not exist and hides ones that do.
+        data_tests: [not_null]
+      - name: available_from
+        description: >
+          The date the record became visible to reconciliation - not the value
+          date. Everything about the queue as of a run date depends on this
+          being arrival time rather than economic time.
+        data_tests: [not_null]
+
+  - name: int_matches__tier1_exact
+    description: >
+      Exact reference, 1:1, and only where the reference is unique on both
+      sides. The tier that should be doing most of the work; when its share
+      falls, reference quality is degrading somewhere upstream.
+
+  - name: int_matches__tier2_aggregate
+    description: >
+      Many-to-one and one-to-many by shared reference or settlement batch.
+      Splits, duplicate postings and batched bank lines land here.
+
+  - name: int_matches__tier3_attribute
+    description: >
+      Amount, date and counterparty, for items whose reference is gone.
+      Blocked on a coarse key, mutual-best pairs only.
+
+  - name: int_matches__tier4_tolerance
+    description: >
+      The loosest rule - same counterparty, amount inside tolerance, inside the
+      settlement window. The tier most tempting to widen when the queue is
+      long, and the one the evaluation mart watches hardest.
+
+  - name: int_matches__all
+    description: >
+      Every match from every tier, with the variance judged against tolerance.
+      A match is not the same as a clean match - tiers 1 and 2 pair on
+      reference and will happily link two records whose amounts disagree. That
+      pair stays LINKED, which is what makes the root cause findable, and is
+      reported separately as a variance.
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: match_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: external_first_available_from
+        description: >
+          Arrival date of the FIRST external leg. For a single-leg settlement
+          this equals external_available_from; for a split it is earlier, and
+          the gap between the two is what separates a partly-paid item from
+          silence.
+
+  - name: int_unmatched
+    description: Events the waterfall never paired, from either side.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+
+  - name: int_settlement_profile
+    description: >
+      Observed settlement behaviour per rail, and the investigation thresholds
+      derived from it. Reads only cleanly matched pairs, so it uses nothing an
+      analyst could not compute from a production warehouse on day one.
+    columns:
+      - name: flow_type
+        data_tests: [unique, not_null]
+      - name: investigation_threshold_bd
+        description: >
+          Age in business days at which an unmatched item stops being "still
+          arriving". p99 of observed arrival lag, floored at the contractual
+          window plus grace and capped by investigation_threshold_ceiling_bd.
+        data_tests: [not_null]
+      - name: threshold_is_capped
+        description: >
+          True when a rail's own p99 has run past the ceiling. That is a signal
+          about the rail - escalate the partner, do not raise the ceiling - so
+          it warns rather than fails.
+        data_tests:
+          - accepted_values:
+              config:
+                severity: warn
+              arguments:
+                values: [false]
+                quote: false
+      - name: partial_completion_threshold_bd
+        description: >
+          Business days a split settlement gets to deliver its remaining legs,
+          counted from the first leg's arrival rather than the transaction.
+        data_tests: [not_null]
+
+  - name: int_breaks__candidates
+    description: >
+      Every potential exception with the window during which it was open.
+      Classification here is STATIC - what the item IS. Whether it counts as a
+      break on a given run date depends on its age, and that is decided in
+      int_breaks__run_history.
+    columns:
+      - name: break_id
+        data_tests: [unique, not_null]
+      - name: break_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["orphan", "variance", "timing"]
+      - name: break_code_static
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('seed_break_taxonomy')
+                field: break_code
+
+  - name: int_breaks__run_history
+    description: >
+      The exception queue as it stood on every daily run. The snapshot
+      replacement: each candidate carries its open window, so the queue as of
+      any date is a join against a date spine - deterministic, replayable from
+      a cold clone, and with no mutable table to drift.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [run_date, break_id]
+    columns:
+      - name: break_code
+        description: Classification resolved AS OF the run date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('seed_break_taxonomy')
+                field: break_code
+      - name: is_true_break
+        description: >
+          The line between an exception and a reconciling item. In-transit and
+          partially-settled rows are open items on the bank rec but nobody's
+          work queue.
+        data_tests: [not_null]
+      - name: sla_clock_bd
+        description: >
+          Business days since the item became ACTIONABLE, not since the
+          transaction. Starting the clock at transaction date is the fastest
+          way to make an exception queue look permanently on fire.
+        data_tests: [not_null]

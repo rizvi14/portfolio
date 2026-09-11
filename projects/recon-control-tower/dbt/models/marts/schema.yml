@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  - name: fct_recon_breaks
+    description: >
+      The open exception queue as of the latest run. One row per open item -
+      true breaks and reconciling items together, with the flag that separates
+      them. Consumers that want actionable work filter on is_true_break; the
+      close package needs both, because in-transit dollars are a reconciling
+      item on the bank rec.
+    columns:
+      - name: break_id
+        data_tests: [unique, not_null]
+      - name: severity
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('seed_severity_matrix')
+                field: severity
+      - name: exposure_cents
+        description: >
+          Unexplained dollars, as a magnitude. Never negative - a single
+          negative nets against the queue and reports less exposure than is
+          really open, which is the direction that gets a reconciliation
+          signed off when it should not be.
+        data_tests: [not_null]
+      - name: aging_bucket
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["0-1d", "2-3d", "4-7d", "8-30d", "30d+"]
+
+  - name: fct_recon_matches
+    description: >
+      Every pair the waterfall made, with its tier, rule and variance. The
+      audit trail behind the match rate: any number on the dashboard can be
+      taken apart down to the two records that produced it.
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+
+  - name: agg_recon_daily
+    description: >
+      One row per run per rail: the numbers a recon lead reads every morning,
+      in the order they should be read. Unexplained exposure first, oldest open
+      break second, match rate third - match rate is gameable (a duplicated
+      statement redelivery RAISES it) and on its own says nothing about the
+      dollars at risk.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [run_date, flow_type]
+    columns:
+      - name: unexplained_exposure_cents
+        description: >
+          The headline. A 99.5% match rate with $2M unexplained is a failing
+          reconciliation.
+        data_tests: [not_null]
+      - name: match_rate
+        description: >
+          Measured on MATURED items only - those that have had a full
+          settlement window to arrive. Measuring it on items that could not
+          have settled yet is the most common self-inflicted recon wound.
+      - name: tier1_share
+        description: >
+          How much of the match rate is doing real work. A falling tier-1 share
+          under a flat match rate means reference quality is degrading and the
+          fuzzy tiers are covering for it.
+
+  - name: agg_break_aging
+    description: >
+      The aged tail by rail, severity, bucket and owning team. Where losses
+      hide: the queue total can look stable while its oldest slice quietly
+      grows.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [as_of_date, flow_type, severity, aging_bucket, owner_team]
+
+  - name: dim_break_type
+    description: >
+      The break taxonomy as a conformed dimension - owner, SLA, typical root
+      cause and GL treatment for every code the engine can emit. A code that is
+      not here produces an exception with no owner and no due date, which
+      assert_break_types_exhaustive refuses to let happen.
+    columns:
+      - name: break_code
+        data_tests: [unique, not_null]
+
+  - name: agg_matching_rule_performance
+    description: >
+      How good the matcher is, measured rather than asserted. THE ONLY MODEL
+      PERMITTED TO READ GROUND TRUTH - src/checks/check_no_ground_truth_leakage.py
+      fails the build if any other node's ancestry touches it. Two grains:
+      transaction (did the pipeline reach the right verdict) and match (did
+      each tier pair the right records, and what dollars would a false match
+      have hidden).
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [grain, subject, flow_type]
+    columns:
+      - name: grain
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["transaction", "match"]
+      - name: precision
+        description: >
+          Of the items raised, how many were real. Low precision is how a queue
+          loses its audience.
+      - name: recall
+        description: >
+          Of the real defects, how many were caught. Low recall is how money
+          leaves.
+      - name: missed_exposure_cents
+        description: >
+          Dollars in defects the pipeline did not raise. The number to put in
+          front of a risk committee, rather than a percentage.

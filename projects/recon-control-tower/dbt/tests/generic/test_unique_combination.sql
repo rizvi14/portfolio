@@ -1,9 +1,10 @@
 {#
   Composite-key uniqueness without pulling in dbt_utils for one test.
   Usage in schema.yml:
-      tests:
+      data_tests:
         - unique_combination:
-            combination: [rate_date, currency]
+            arguments:
+              combination: [rate_date, currency]
 #}
 {% test unique_combination(model, combination) %}
 select
