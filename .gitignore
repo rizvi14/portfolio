@@ -16,10 +16,16 @@ credentials.json
 service-account*.json
 
 # Data — keep the repo light; commit only small sample extracts
-data/raw/*
-data/processed/*
-!data/**/.gitkeep
-!data/**/sample_*.csv
+**/data/raw/*
+**/data/processed/*
+!**/data/**/.gitkeep
+!**/data/**/sample_*.csv
+!**/data/raw/_manifest.json
+
+# dbt
+**/dbt/.user.yml
+**/dbt/target/
+**/dbt/logs/
 *.parquet
 *.db
 *.duckdb
