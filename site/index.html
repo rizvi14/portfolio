@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mo Rizvi — data projects</title>
+<style>
+  :root { color-scheme: light dark; --ink: #111a2e; --muted: #6b7490; --line: #dfe3ee; --paper: #f5f6fa; --accent: #4655d9; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e9ecf5; --muted: #8590ad; --line: #26304d; --paper: #0d1322; --accent: #8290f3; } }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; padding: 48px clamp(16px, 5vw, 48px); }
+  main { max-width: 720px; margin-inline: auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin-bottom: 32px; }
+  a { color: var(--accent); }
+  .proj { display: block; padding: 18px 0; border-top: 1px solid var(--line); color: inherit; text-decoration: none; }
+  .proj:last-of-type { border-bottom: 1px solid var(--line); }
+  .proj h2 { font-size: 18px; margin: 0 0 4px; }
+  .proj p { margin: 0; color: var(--muted); }
+  .proj .tags { font-size: 12.5px; color: var(--muted); margin-top: 6px; letter-spacing: .04em; text-transform: uppercase; }
+  .proj:hover h2 { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Data projects</h1>
+  <p class="sub">Built end to end — synthetic data with known answers, a modelled warehouse, controls that can fail, and a page that reads the result. Source on <a href="https://github.com/rizvi14/portfolio">GitHub</a>.</p>
+
+  <a class="proj" href="recon-control-tower/">
+    <h2>Recon Control Tower</h2>
+    <p>Reconciliation of a ledger against a partner bank and a card processor across ACH, card and wire: a four-tier matching waterfall scored against injected ground truth, a replayable exception queue, a bank tie-out that foots to the cent, and four root-cause analyses.</p>
+    <div class="tags">SQL · dbt · DuckDB · root-cause analysis · controls</div>
+  </a>
+</main>
+</body>
+</html>

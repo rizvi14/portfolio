@@ -15,7 +15,7 @@ Engineering in their first month.
 | Investigation threshold calibrated per rail from observed behaviour | built |
 | Four-column bank reconciliation that foots to the cent; month-end roll-forward | built |
 | Nine reconciliation controls run on every build; CI refuses a failing one | built |
-| Static dashboard for the queue, trend and close | built |
+| Static dashboard for the queue, trend, tie-out, scorecard and rail profile | built — GitHub Pages |
 | Resolution workflow | **simulated** — stated in the README |
 | Correcting journal entries | **not modelled** — tie-out only, by scope decision |
 | Holiday calendar | not modelled |

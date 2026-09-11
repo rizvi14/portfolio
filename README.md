@@ -11,7 +11,7 @@ the data, the method, and what the answer changes.
 
 | Project | Question it answers | Stack | Notes |
 |---|---|---|---|
-| _(add your first project here)_ | | | |
+| [Recon Control Tower](projects/recon-control-tower/) | "How many dollars are unexplained between the ledger and the bank, who owns each difference, and is the matching engine any good?" | SQL · dbt · DuckDB · Python · static JS | [Dashboard](https://rizvi14.github.io/portfolio/recon-control-tower/) · [RCAs](projects/recon-control-tower/docs/rca/) |
 
 <!--
 Row format — keep it to one line each:
@@ -27,9 +27,12 @@ projects/
     data/raw/        # untouched source extracts (gitignored)
     data/processed/  # derived tables (gitignored)
     notebooks/       # exploration and the final write-up
-    sql/             # queries and models
+    sql/ or dbt/     # queries and models
     src/             # reusable extract / transform code
+    app/             # a static page, if the project has one (deployed to GitHub Pages)
 ```
+
+Projects with a page are published at [rizvi14.github.io/portfolio](https://rizvi14.github.io/portfolio/).
 
 `projects/_template/` is a starting point — copy it to begin a new project.
 

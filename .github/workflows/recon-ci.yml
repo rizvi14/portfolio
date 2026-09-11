@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "projects/recon-control-tower/**"
+      - "site/**"
       - ".github/workflows/recon-ci.yml"
   pull_request:
     paths:
@@ -61,6 +62,21 @@ jobs:
       - name: control summary
         run: python -m src.checks.run_controls --skip-build | tee control-summary.txt
 
+      - name: export dashboard data
+        run: python -m src.export_dashboard
+
+      - name: assemble the site
+        working-directory: .
+        run: |
+          mkdir -p _site/recon-control-tower
+          cp -r site/. _site/
+          cp -r projects/recon-control-tower/app/. _site/recon-control-tower/
+
+      - name: upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
       - name: attach the run
         if: always()
         uses: actions/upload-artifact@v4
@@ -71,3 +87,18 @@ jobs:
             projects/recon-control-tower/dbt/target/manifest.json
             projects/recon-control-tower/dbt/target/run_results.json
           retention-days: 30
+
+  pages:
+    name: deploy dashboard to GitHub Pages
+    needs: controls
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recon Control Tower</title>
+<meta name="description" content="Daily reconciliation control position across ACH, card and wire: unexplained exposure, the exception queue, the bank tie-out, and how the matcher scores.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ------------------------------------------------------------------ tokens */
+:root {
+  color-scheme: light;
+  --paper: #f5f6fa;
+  --surface: #ffffff;
+  --surface-2: #eef0f6;
+  --ink: #111a2e;
+  --ink-2: #47506c;
+  --muted: #7b849f;
+  --line: #dfe3ee;
+  --line-2: #c9cfdf;
+  --accent: #4655d9;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6e9fb;
+  --ach: #2a78d6;
+  --card: #eb6834;
+  --wire: #1baf7a;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-soft: #e3f4e3;
+  --warning-soft: #fdf1d3;
+  --serious-soft: #fce6dc;
+  --critical-soft: #f9dfdf;
+  --shadow: 0 1px 2px rgba(17,26,46,.06), 0 8px 24px -12px rgba(17,26,46,.18);
+  --grid: #e8ebf3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #0d1322;
+    --surface: #141b2e;
+    --surface-2: #1b2339;
+    --ink: #e9ecf5;
+    --ink-2: #b4bbd0;
+    --muted: #8590ad;
+    --line: #26304d;
+    --line-2: #34405f;
+    --accent: #8290f3;
+    --accent-ink: #0d1322;
+    --accent-soft: #232d55;
+    --ach: #3987e5;
+    --card: #d95926;
+    --wire: #199e70;
+    --good-soft: #143a1b;
+    --warning-soft: #3e3211;
+    --serious-soft: #3f2418;
+    --critical-soft: #3f1a1a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    --grid: #1f2841;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0d1322;
+  --surface: #141b2e;
+  --surface-2: #1b2339;
+  --ink: #e9ecf5;
+  --ink-2: #b4bbd0;
+  --muted: #8590ad;
+  --line: #26304d;
+  --line-2: #34405f;
+  --accent: #8290f3;
+  --accent-ink: #0d1322;
+  --accent-soft: #232d55;
+  --ach: #3987e5;
+  --card: #d95926;
+  --wire: #199e70;
+  --good-soft: #143a1b;
+  --warning-soft: #3e3211;
+  --serious-soft: #3f2418;
+  --critical-soft: #3f1a1a;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  --grid: #1f2841;
+}
+
+/* ------------------------------------------------------------------- base */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.5;
+  padding-block: 0 64px;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { font-family: Manrope, "IBM Plex Sans", system-ui, sans-serif; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: clamp(26px, 3.2vw, 34px); font-weight: 800; line-height: 1.1; }
+h2 { font-size: 18px; font-weight: 700; }
+h3 { font-size: 14px; font-weight: 700; }
+p { margin: 0; }
+.num, td.num, .mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: Manrope, sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.wrap { max-width: 1240px; margin-inline: auto; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* ----------------------------------------------------------------- header */
+header.top {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px;
+  padding-block: 36px 24px;
+  border-bottom: 1px solid var(--line-2);
+}
+.top .lede { max-width: 62ch; color: var(--ink-2); margin-top: 10px; }
+.top .asof { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; text-align: right; }
+.top .asof .date { font-family: Manrope, sans-serif; font-weight: 700; font-size: 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.chip.good { background: var(--good-soft); border-color: transparent; color: var(--ink); }
+.chip.good .dot { background: var(--good); }
+.chip.critical { background: var(--critical-soft); border-color: transparent; color: var(--ink); }
+.chip.critical .dot { background: var(--critical); }
+.chip.warning { background: var(--warning-soft); border-color: transparent; color: var(--ink); }
+.chip.warning .dot { background: var(--warning); }
+
+/* --------------------------------------------------------------- headline */
+.headline {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line-2);
+}
+.headline > div {
+  padding: 22px 20px 20px 0; margin-right: 20px;
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.headline > div:last-child { border-right: 0; margin-right: 0; }
+.headline .label { font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+.headline .fig { font-family: Manrope, sans-serif; font-weight: 800; font-size: clamp(26px, 2.6vw, 34px); line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.headline .sub { font-size: 12.5px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.headline .sub b { color: var(--ink-2); font-weight: 600; }
+.headline .order { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); }
+.spark { width: 100%; height: 34px; display: block; margin-top: 4px; }
+@media (max-width: 860px) {
+  .headline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .headline > div:nth-child(2) { border-right: 0; margin-right: 0; }
+}
+@media (max-width: 480px) {
+  .headline { grid-template-columns: 1fr; }
+  .headline > div { border-right: 0; margin-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* --------------------------------------------------------------- sections */
+section { padding-block: 32px 8px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 14px; }
+.sec-head p { color: var(--ink-2); max-width: 70ch; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 14px; min-width: 0; }
+.panel h3 { margin-bottom: 2px; }
+.panel .note { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+
+/* ------------------------------------------------------------------ charts */
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--muted); }
+.chart .grid line { stroke: var(--grid); stroke-width: 1; }
+.chart .axis line { stroke: var(--line-2); }
+.chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .series.dim { opacity: .22; }
+.chart .endpt { stroke: var(--surface); stroke-width: 2; }
+.chart .endlbl { font-size: 11px; font-weight: 500; fill: var(--ink-2); }
+.chart .xhair { stroke: var(--line-2); stroke-dasharray: 3 3; }
+.chart .hit { fill: transparent; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.rail-ach { color: var(--ach); } .rail-card { color: var(--card); } .rail-wire { color: var(--wire); }
+.bg-ach { background: var(--ach); } .bg-card { background: var(--card); } .bg-wire { background: var(--wire); }
+.tip {
+  position: fixed; pointer-events: none; z-index: 10; opacity: 0; transition: opacity .08s;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--shadow);
+  padding: 8px 10px; font-size: 12.5px; color: var(--ink); min-width: 150px;
+}
+.tip .t { font-family: "IBM Plex Mono", monospace; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.tip .row i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.tip .row .v { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ filters */
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500;
+  padding: 6px 12px; cursor: pointer; border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:hover:not([aria-pressed="true"]) { background: var(--surface-2); }
+label.sel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; padding: 5px 8px; }
+.count { font-size: 12.5px; color: var(--muted); margin-left: auto; }
+
+/* ------------------------------------------------------------------- tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+th { font-family: Manrope, sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); position: sticky; top: 0; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--ink); }
+th[aria-sort="descending"]::after { content: " ↓"; } th[aria-sort="ascending"]::after { content: " ↑"; }
+td.num, th.num { text-align: right; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface-2); }
+td.wrap { white-space: normal; max-width: 34ch; color: var(--ink-2); }
+tr.total td { font-weight: 600; border-top: 2px solid var(--line-2); background: var(--surface-2); }
+tr.sub td { color: var(--ink-2); }
+tr.sub td:first-child { padding-left: 24px; }
+.sev { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.sev::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.sev.critical { background: var(--critical-soft); color: var(--critical); }
+.sev.high { background: var(--serious-soft); color: var(--serious); }
+.sev.medium { background: var(--warning-soft); color: #8a5d00; }
+:root[data-theme="dark"] .sev.medium { color: var(--warning); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sev.medium { color: var(--warning); } }
+.sev.low { background: var(--surface-2); color: var(--ink-2); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); }
+.pill.ach { background: color-mix(in srgb, var(--ach) 16%, transparent); color: var(--ach); }
+.pill.card { background: color-mix(in srgb, var(--card) 16%, transparent); color: var(--card); }
+.pill.wire { background: color-mix(in srgb, var(--wire) 16%, transparent); color: var(--wire); }
+.breach { color: var(--critical); font-weight: 600; }
+.showmore { margin-top: 10px; }
+.showmore button, .btn { appearance: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.showmore button:hover, .btn:hover { background: var(--surface-2); }
+
+/* --------------------------------------------------------------- aging bar */
+.aging { display: flex; flex-direction: column; gap: 10px; }
+.aging .bar { display: flex; height: 22px; gap: 2px; border-radius: 4px; overflow: hidden; }
+.aging .bar div { min-width: 2px; }
+.aging .keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); }
+.aging .keys i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.b1 { background: color-mix(in srgb, var(--accent) 30%, var(--surface)); }
+.b2 { background: color-mix(in srgb, var(--accent) 50%, var(--surface)); }
+.b3 { background: color-mix(in srgb, var(--accent) 70%, var(--surface)); }
+.b4 { background: var(--accent); }
+.b5 { background: var(--critical); }
+
+/* ----------------------------------------------------------------- tie-out */
+.bridge td:first-child { color: var(--ink-2); }
+.bridge tr.head td { font-weight: 600; color: var(--ink); }
+.bridge tr.foot td { font-weight: 700; color: var(--ink); border-top: 2px solid var(--line-2); }
+.bridge .neg { color: var(--critical); }
+.foots { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.foots .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+.foots.bad .dot { background: var(--critical); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; align-items: baseline; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.callout { border-left: 3px solid var(--accent); padding: 8px 14px; background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink-2); margin-top: 12px; }
+.callout b { color: var(--ink); }
+
+/* -------------------------------------------------------------- scorecard */
+.score { display: grid; grid-template-columns: minmax(180px, 1.2fr) 60px 1fr 110px; gap: 4px 12px; align-items: center; font-size: 13px; }
+.score .h { font-family: Manrope, sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.score .name { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.score .name small { color: var(--muted); }
+.score .track { height: 10px; background: var(--surface-2); border-radius: 3px; overflow: hidden; position: relative; }
+.score .track div { height: 100%; border-radius: 3px 0 0 3px; }
+.score .track div.full { border-radius: 3px; }
+.score .track .floor { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+.score .v { text-align: right; }
+.score .v small { color: var(--muted); }
+.score .grp { grid-column: 1 / -1; padding-top: 10px; }
+@media (max-width: 560px) { .score { grid-template-columns: 1fr 50px 1fr 90px; } }
+
+/* ---------------------------------------------------------------- profile */
+.prof { display: grid; grid-template-columns: 70px 1fr; gap: 14px 16px; align-items: center; }
+.prof .rail { font-weight: 700; font-family: Manrope, sans-serif; }
+.lag { display: block; width: 100%; height: 44px; }
+.lag text { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--muted); }
+.lag .axis { stroke: var(--line-2); }
+.lag .tick { stroke: var(--line-2); }
+.lag .policy { fill: var(--surface); stroke: var(--ink-2); stroke-width: 2; }
+.lag .p99 { fill: var(--ink-2); }
+.lag .thr { stroke: var(--accent); stroke-width: 2; }
+.lag .band { fill: var(--accent); opacity: .18; }
+.lag .lbl { fill: var(--ink-2); font-weight: 500; }
+.prof-keys { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); margin-top: 10px; }
+.prof-keys span { display: inline-flex; align-items: center; gap: 6px; }
+.prof-keys svg { width: 18px; height: 12px; }
+
+/* ----------------------------------------------------------------- findings */
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.finding { display: block; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.finding:hover { border-color: var(--accent); text-decoration: none; }
+.finding .id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--muted); }
+.finding h3 { margin: 4px 0 6px; }
+.finding p { font-size: 13px; color: var(--ink-2); }
+
+footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line-2); font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+footer p { max-width: 80ch; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { position: static; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <div class="eyebrow">Reconciliation · ACH · Card · Wire</div>
+    <h1>Recon Control Tower</h1>
+    <p class="lede">Ledger against the partner bank and the card processor, every business day. Read it top to bottom: dollars unexplained, then the oldest open item, then the match rate — never the other way round.</p>
+  </div>
+  <div class="asof">
+    <div><span class="eyebrow">As of</span><div class="date" id="asof">—</div></div>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<div class="headline" id="headline"></div>
+
+<section>
+  <div class="sec-head">
+    <h2>Trend, trailing <span id="runs-n">60</span> runs</h2>
+    <p>Exposure is the sum of open true breaks. Match rate counts only items that have had a full settlement window to arrive.</p>
+  </div>
+  <div class="filters" role="group" aria-label="Rail filter">
+    <div class="seg" id="rail-seg">
+      <button type="button" data-rail="all" aria-pressed="true">All rails</button>
+      <button type="button" data-rail="ach" aria-pressed="false">ACH</button>
+      <button type="button" data-rail="card" aria-pressed="false">Card</button>
+      <button type="button" data-rail="wire" aria-pressed="false">Wire</button>
+    </div>
+    <span class="muted" style="font-size:12.5px">Filters the trend, the queue, and the tie-out together.</span>
+  </div>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Unexplained exposure by rail</h3>
+      <div class="note">Open true breaks, US$. Duplicated statement files and the interchange backlog are visible as steps.</div>
+      <svg class="chart" id="ch-exposure" viewBox="0 0 560 240" role="img" aria-label="Unexplained exposure by rail over the trailing runs"></svg>
+      <div class="legend"><span><i class="bg-ach"></i>ACH</span><span><i class="bg-card"></i>Card</span><span><i class="bg-wire"></i>Wire</span></div>
+    </div>
+    <div class="panel">
+      <h3>Match rate on matured items</h3>
+      <div class="note">Per-rail floor <span class="mono" id="floor-flow"></span>. A rate that pairs records with disagreeing amounts still counts — variances are separate exceptions.</div>
+      <svg class="chart" id="ch-match" viewBox="0 0 560 240" role="img" aria-label="Match rate on matured items by rail over the trailing runs"></svg>
+      <div class="legend"><span><i class="bg-ach"></i>ACH</span><span><i class="bg-card"></i>Card</span><span><i class="bg-wire"></i>Wire</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Exception queue</h2>
+    <p>Every open true break as of the run date, sorted by dollars. In-transit items are counted below the table and never appear in it — they are nobody's work.</p>
+  </div>
+  <div class="filters">
+    <label class="sel">Severity <select id="f-sev"><option value="">any</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></label>
+    <label class="sel">Owner <select id="f-owner"><option value="">any</option></select></label>
+    <label class="sel">Break <select id="f-code"><option value="">any</option></select></label>
+    <label class="sel"><input type="checkbox" id="f-sla"> past SLA only</label>
+    <span class="count" id="q-count"></span>
+  </div>
+  <div class="grid-2" style="grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr)">
+    <div>
+      <div class="tbl-wrap">
+        <table id="queue">
+          <thead><tr>
+            <th class="sortable" data-k="break_code">Break</th>
+            <th>Rail</th>
+            <th class="sortable" data-k="severity">Severity</th>
+            <th class="sortable" data-k="owner_team">Owner</th>
+            <th class="sortable num" data-k="exposure_cents" aria-sort="descending">Exposure</th>
+            <th class="sortable num" data-k="sla_clock_bd">SLA clock</th>
+            <th class="sortable num" data-k="age_business_days">Age</th>
+            <th>Typical root cause</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="showmore"><button type="button" id="q-more">Show all</button></div>
+    </div>
+    <div class="panel">
+      <h3>Aging, by SLA clock</h3>
+      <div class="note">Business days since the item became actionable — the clock starts after the settlement window, not at the transaction.</div>
+      <div class="aging" id="aging"></div>
+      <div class="callout" id="transit-note"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Bank reconciliation tie-out</h2>
+    <p>Balance per bank, plus every named reconciling item, equals balance per books. Built from match state, not from the queue — an adjudicated exception leaves the queue, but its dollars stay in the clearing account until an entry posts.</p>
+  </div>
+  <div class="grid-2">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+        <h3 id="bridge-title">Four-column bridge</h3>
+        <span class="foots" id="bridge-foots"><span class="dot"></span>foots to the cent</span>
+      </div>
+      <div class="note">Run date <span class="mono" id="bridge-date"></span>. Items in transit are dollars the books have and the bank has not yet reported.</div>
+      <div class="tbl-wrap" style="border:0;border-radius:0"><table class="bridge" id="bridge"></table></div>
+      <div class="callout" id="await-note"></div>
+    </div>
+    <div class="panel">
+      <h3>Month-end close</h3>
+      <div class="note">Exception roll-forward per rail. Opening + opened − closed must equal closing; the last column is the uncorrected balance the auditor asks about first.</div>
+      <div class="tbl-wrap" style="border:0;border-radius:0">
+        <table id="close">
+          <thead><tr><th>Month</th><th>Rail</th><th class="num">Opening</th><th class="num">Opened</th><th class="num">Closed</th><th class="num">Closing</th><th class="num">Churned</th><th class="num">Awaiting correction</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>How the matcher scores</h2>
+    <p>Breaks are injected at known rates with labels, and the pipeline is graded against them by the one model allowed to see the answers. Precision is whether the queue can be trusted; recall is whether money can leave unnoticed.</p>
+  </div>
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Recall by injected break type</h3>
+      <div class="note">Transaction grain. Non-breaks (in transit, partial refunds, NOC renames) are graded on <em>not</em> being raised — every one of them scores clean.</div>
+      <div class="score" id="score"></div>
+    </div>
+    <div>
+      <div class="panel" style="margin-bottom:20px">
+        <h3>Verdicts</h3>
+        <dl class="kv" id="verdicts"></dl>
+      </div>
+      <div class="panel">
+        <h3>Where the matches come from</h3>
+        <div class="note">Match-grain precision per tier — a false pair here hides a real difference behind a green number. Tier 4 making no matches is the correct outcome.</div>
+        <div class="tbl-wrap" style="border:0;border-radius:0">
+          <table id="tiers"><thead><tr><th>Rule</th><th>Rail</th><th class="num">Pairs</th><th class="num">False pairs</th><th class="num">Precision</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>What each rail actually does</h2>
+    <p>The contractual window is a policy number. The investigation threshold is calibrated from the observed p99 arrival lag of cleanly matched pairs, floored at policy + grace and capped so a degrading rail cannot widen its own definition of on-time.</p>
+  </div>
+  <div class="panel">
+    <div class="prof" id="profile"></div>
+    <div class="prof-keys">
+      <span><svg viewBox="0 0 18 12"><circle cx="9" cy="6" r="4" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="2"/></svg>contractual window</span>
+      <span><svg viewBox="0 0 18 12"><circle cx="9" cy="6" r="4" fill="var(--ink-2)"/></svg>observed p99</span>
+      <span><svg viewBox="0 0 18 12"><rect x="2" y="1" width="14" height="10" fill="var(--accent)" opacity=".18"/><line x1="16" y1="0" x2="16" y2="12" stroke="var(--accent)" stroke-width="2"/></svg>in-transit band → investigation threshold</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Findings</h2>
+    <p>Four root-cause analyses from the first scored runs. Two of them are defects in the reconciliation itself, found by its own scorecard.</p>
+  </div>
+  <div class="findings" id="findings"></div>
+</section>
+
+<footer>
+  <p><b>Synthetic data.</b> <span id="foot-meta"></span> Ground truth is quarantined: one mart reads it, a build check enforces that. Resolution is simulated — the engine finds exceptions, closing them is a human workflow.</p>
+  <p><a id="repo-link" href="https://github.com/rizvi14/portfolio/tree/main/projects/recon-control-tower">Source, dbt project, and docs on GitHub</a></p>
+</footer>
+
+</div>
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script src="data/dashboard.js"></script>
+<script>
+(function () {
+  const D = window.RECON_DATA;
+  if (!D) { document.getElementById('asof').textContent = 'no data'; return; }
+  const RAILS = ['ach', 'card', 'wire'];
+  const RAIL_NAME = { ach: 'ACH', card: 'Card', wire: 'Wire' };
+  const railColor = r => getComputedStyle(document.documentElement).getPropertyValue('--' + r).trim();
+  const $ = (s, el) => (el || document).querySelector(s);
+  const el = (tag, attrs, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) { if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else n.setAttribute(k, v); }
+    for (const k of kids) n.append(k);
+    return n;
+  };
+  const svgEl = (tag, attrs) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v); return n; };
+  const usd = c => { const v = c / 100; const a = Math.abs(v); const s = a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(1) + 'k' : a.toFixed(0); return (v < 0 ? '−$' : '$') + s; };
+  const usdFull = c => (c < 0 ? '−' : '') + '$' + Math.abs(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = (x, d = 2) => x == null ? '—' : (x * 100).toFixed(d) + '%';
+  const fmtDate = s => { const d = new Date(s + 'T00:00:00'); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+  const fmtDateLong = s => new Date(s + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  const escape = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  let rail = 'all';
+  const H = D.headline, V = D.meta.vars;
+
+  // ------------------------------------------------------------ header
+  $('#asof').textContent = fmtDateLong(H.as_of);
+  $('#runs-n').textContent = D.meta.trailing_runs;
+  $('#floor-flow').textContent = V.match_rate_floor_by_flow.toFixed(3);
+  $('#foot-meta').textContent = `${D.meta.transactions.toLocaleString()} transactions across three rails, ${D.meta.period.start} to ${D.meta.period.end}, seed ${D.meta.seed}, ${D.meta.injected_breaks.toLocaleString()} labelled breaks injected.`;
+  const chips = $('#chips');
+  chips.append(
+    el('span', { class: 'chip ' + (H.tieout_foots ? 'good' : 'critical') }, el('i', { class: 'dot' }), H.tieout_foots ? 'Tie-out foots' : 'Tie-out does not foot'),
+    el('span', { class: 'chip ' + (H.rollforward_foots ? 'good' : 'critical') }, el('i', { class: 'dot' }), H.rollforward_foots ? 'Roll-forward foots' : 'Roll-forward gap'),
+    el('span', { class: 'chip ' + (H.false_positives === 0 ? 'good' : 'warning') }, el('i', { class: 'dot' }), `Precision ${H.precision.toFixed(3)} · Recall ${H.recall.toFixed(3)}`),
+    el('span', { class: 'chip ' + (H.open_critical ? 'critical' : 'good') }, el('i', { class: 'dot' }), `${H.open_critical} critical open`)
+  );
+
+  // ------------------------------------------------------------ headline
+  function seriesFor(key, r) {
+    const dates = [...new Set(D.daily.map(d => d.run_date))].sort();
+    return dates.map(dt => {
+      const rows = D.daily.filter(d => d.run_date === dt && (r === 'all' || d.flow_type === r));
+      if (key === 'match_rate') { const m = rows.reduce((a, d) => a + d.items_matched, 0), t = rows.reduce((a, d) => a + d.items_matured, 0); return { x: dt, y: t ? m / t : null }; }
+      if (key === 'oldest') return { x: dt, y: Math.max(...rows.map(d => d.oldest_open_break_bd)) };
+      return { x: dt, y: rows.reduce((a, d) => a + (d[key] || 0), 0) };
+    });
+  }
+  function sparkline(pts, color) {
+    const w = 200, h = 34, ys = pts.map(p => p.y).filter(v => v != null);
+    const lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+    const path = pts.map((p, i) => (i ? 'L' : 'M') + (i / (pts.length - 1) * (w - 4) + 2).toFixed(1) + ' ' + (h - 3 - (p.y - lo) / span * (h - 8)).toFixed(1)).join(' ');
+    const s = svgEl('svg', { class: 'spark', viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true', preserveAspectRatio: 'none' });
+    s.append(svgEl('path', { d: path, fill: 'none', stroke: color, 'stroke-width': 1.75 }));
+    const last = pts[pts.length - 1];
+    s.append(svgEl('circle', { cx: w - 2, cy: (h - 3 - (last.y - lo) / span * (h - 8)).toFixed(1), r: 2.5, fill: color }));
+    return s;
+  }
+  function renderHeadline() {
+    const hl = $('#headline'); hl.innerHTML = '';
+    const rows = D.daily.filter(d => d.run_date === H.as_of && (rail === 'all' || d.flow_type === rail));
+    const sum = k => rows.reduce((a, d) => a + d[k], 0);
+    const matured = sum('items_matured'), matched = sum('items_matched'), clean = sum('items_clean');
+    const t1 = rows.reduce((a, d) => a + d.matched_tier1, 0);
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const tiles = [
+      { order: '01', label: 'Unexplained exposure', fig: usdFull(sum('unexplained_exposure_cents')), sub: [`<b>${sum('open_breaks')}</b> open true breaks`, `<b>${sum('open_critical')}</b> critical`], spark: seriesFor('unexplained_exposure_cents', rail) },
+      { order: '02', label: 'Oldest open break', fig: Math.max(...rows.map(d => d.oldest_open_break_bd)) + ' bd', sub: [`<b>${sum('sla_breached')}</b> past SLA`, `on the actionable clock`], spark: seriesFor('oldest', rail) },
+      { order: '03', label: 'Match rate, matured items', fig: pct(matured ? matched / matured : null), sub: [`clean <b>${pct(matured ? clean / matured : null)}</b>`, `tier-1 share <b>${pct(matched ? t1 / matched : null, 1)}</b>`], spark: seriesFor('match_rate', rail) },
+      { order: '04', label: 'In transit', fig: usd(sum('in_transit_cents')), sub: [`<b>${sum('in_transit_items').toLocaleString()}</b> items inside their window`, `not work — a reconciling item`], spark: seriesFor('in_transit_cents', rail) },
+    ];
+    for (const t of tiles) {
+      const d = el('div', {}, el('div', { class: 'order' }, t.order), el('div', { class: 'label' }, t.label), el('div', { class: 'fig' }, t.fig));
+      const sub = el('div', { class: 'sub' }); for (const s of t.sub) sub.append(el('span', { html: s })); d.append(sub);
+      d.append(sparkline(t.spark, accent)); hl.append(d);
+    }
+  }
+
+  // ------------------------------------------------------------ line charts
+  const tip = $('#tip');
+  function showTip(html, x, y) { tip.innerHTML = html; tip.style.opacity = 1; const r = tip.getBoundingClientRect(); tip.style.left = Math.min(x + 14, window.innerWidth - r.width - 12) + 'px'; tip.style.top = Math.max(8, y - r.height - 12) + 'px'; }
+  function hideTip() { tip.style.opacity = 0; }
+
+  function lineChart(svg, key, opts) {
+    svg.innerHTML = '';
+    const W = 560, Hh = 240, m = { t: 14, r: 44, b: 28, l: 52 };
+    const dates = [...new Set(D.daily.map(d => d.run_date))].sort();
+    const series = RAILS.map(r => ({ r, pts: dates.map(dt => { const d = D.daily.find(x => x.run_date === dt && x.flow_type === r); return d ? (opts.y(d)) : null; }) }));
+    const all = series.flatMap(s => s.pts).filter(v => v != null);
+    let lo = opts.min != null ? opts.min : Math.min(...all), hi = Math.max(...all);
+    if (opts.padTop) hi = hi + (hi - lo) * 0.08 || hi * 1.05;
+    if (hi === lo) hi = lo + 1;
+    const x = i => m.l + i / (dates.length - 1) * (W - m.l - m.r);
+    const y = v => m.t + (1 - (v - lo) / (hi - lo)) * (Hh - m.t - m.b);
+    const grid = svgEl('g', { class: 'grid' }), axis = svgEl('g', { class: 'axis' });
+    const ticks = opts.ticks(lo, hi);
+    for (const tv of ticks) { grid.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: y(tv), y2: y(tv) })); const t = svgEl('text', { x: m.l - 8, y: y(tv) + 4, 'text-anchor': 'end' }); t.textContent = opts.fmt(tv); axis.append(t); }
+    if (opts.floor != null && opts.floor >= lo && opts.floor <= hi) {
+      grid.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: y(opts.floor), y2: y(opts.floor), style: 'stroke:var(--critical);stroke-dasharray:4 4;opacity:.7' }));
+      const t = svgEl('text', { x: W - m.r + 4, y: y(opts.floor) + 4, style: 'fill:var(--critical)' }); t.textContent = 'floor'; axis.append(t);
+    }
+    const xt = [0, Math.floor(dates.length / 3), Math.floor(2 * dates.length / 3), dates.length - 1];
+    for (const i of xt) { const t = svgEl('text', { x: x(i), y: Hh - 8, 'text-anchor': i === 0 ? 'start' : i === dates.length - 1 ? 'end' : 'middle' }); t.textContent = fmtDate(dates[i]); axis.append(t); }
+    axis.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: Hh - m.b, y2: Hh - m.b }));
+    svg.append(grid, axis);
+    for (const s of series) {
+      let d = '', pen = false;
+      s.pts.forEach((v, i) => { if (v == null) { pen = false; return; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen = true; });
+      const dim = rail !== 'all' && rail !== s.r;
+      svg.append(svgEl('path', { d, class: 'series' + (dim ? ' dim' : ''), stroke: railColor(s.r) }));
+      const li = s.pts.length - 1, lv = s.pts[li];
+      if (lv != null && !dim) {
+        svg.append(svgEl('circle', { cx: x(li), cy: y(lv), r: 3.5, fill: railColor(s.r), class: 'endpt' }));
+        const t = svgEl('text', { x: x(li) + 7, y: y(lv) + 4, class: 'endlbl' }); t.textContent = RAIL_NAME[s.r]; svg.append(t);
+      }
+    }
+    // hover layer
+    const xh = svgEl('line', { class: 'xhair', y1: m.t, y2: Hh - m.b, style: 'opacity:0' }); svg.append(xh);
+    const dots = RAILS.map(r => { const c = svgEl('circle', { r: 4, fill: railColor(r), class: 'endpt', style: 'opacity:0' }); svg.append(c); return c; });
+    const hit = svgEl('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: Hh - m.t - m.b, class: 'hit' }); svg.append(hit);
+    const move = ev => {
+      const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const i = Math.max(0, Math.min(dates.length - 1, Math.round((p.x - m.l) / (W - m.l - m.r) * (dates.length - 1))));
+      xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.opacity = 1;
+      let html = `<div class="t">${fmtDateLong(dates[i])}</div>`;
+      series.forEach((s, k) => { const v = s.pts[i]; if (v == null) { dots[k].style.opacity = 0; return; } dots[k].setAttribute('cx', x(i)); dots[k].setAttribute('cy', y(v)); dots[k].style.opacity = 1; html += `<div class="row"><span><i style="background:${railColor(s.r)}"></i>${RAIL_NAME[s.r]}</span><span class="v">${opts.tipFmt(v)}</span></div>`; });
+      showTip(html, ev.clientX, ev.clientY);
+    };
+    hit.addEventListener('mousemove', move);
+    hit.addEventListener('mouseleave', () => { xh.style.opacity = 0; dots.forEach(d => d.style.opacity = 0); hideTip(); });
+  }
+  function niceTicks(lo, hi, n) { const span = hi - lo; const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; const step = (f >= 5 ? 5 : f >= 2 ? 2 : 1) * p; const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v); return out; }
+  function renderCharts() {
+    lineChart($('#ch-exposure'), 'exp', { y: d => d.unexplained_exposure_cents, min: 0, padTop: true, ticks: (lo, hi) => niceTicks(lo, hi, 4), fmt: usd, tipFmt: usdFull });
+    lineChart($('#ch-match'), 'mr', { y: d => d.match_rate, min: Math.min(V.match_rate_floor_by_flow - 0.005, ...D.daily.map(d => d.match_rate)), ticks: (lo, hi) => niceTicks(lo, hi, 4), fmt: v => (v * 100).toFixed(1) + '%', tipFmt: v => pct(v, 3), floor: V.match_rate_floor_by_flow });
+  }
+
+  // ------------------------------------------------------------ queue
+  const SEV_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+  let sortKey = 'exposure_cents', sortDir = -1, showAll = false;
+  const fOwner = $('#f-owner'), fCode = $('#f-code');
+  for (const o of [...new Set(D.queue.map(q => q.owner_team))].sort()) fOwner.append(el('option', {}, o));
+  for (const c of [...new Set(D.queue.map(q => q.break_code))].sort()) fCode.append(el('option', { value: c }, D.taxonomy.find(t => t.break_code === c)?.display_name || c));
+  function queueRows() {
+    const sev = $('#f-sev').value, own = fOwner.value, code = fCode.value, sla = $('#f-sla').checked;
+    return D.queue.filter(q => (rail === 'all' || q.flow_type === rail) && (!sev || q.severity === sev) && (!own || q.owner_team === own) && (!code || q.break_code === code) && (!sla || q.is_sla_breached))
+      .sort((a, b) => { let va = a[sortKey], vb = b[sortKey]; if (sortKey === 'severity') { va = SEV_RANK[va]; vb = SEV_RANK[vb]; } return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir; });
+  }
+  function renderQueue() {
+    const rows = queueRows(), tb = $('#queue tbody'); tb.innerHTML = '';
+    const shown = showAll ? rows : rows.slice(0, 25);
+    for (const q of shown) {
+      const tr = el('tr', {},
+        el('td', {}, el('div', {}, q.display_name), el('div', { class: 'mono muted', style: 'font-size:11px' }, q.break_id)),
+        el('td', {}, el('span', { class: 'pill ' + q.flow_type }, RAIL_NAME[q.flow_type])),
+        el('td', {}, el('span', { class: 'sev ' + q.severity }, q.severity)),
+        el('td', {}, q.owner_team),
+        el('td', { class: 'num' }, usdFull(q.exposure_cents)),
+        el('td', { class: 'num' + (q.is_sla_breached ? ' breach' : '') }, `${q.sla_clock_bd} / ${q.sla_business_days} bd`),
+        el('td', { class: 'num' }, q.age_business_days + ' bd'),
+        el('td', { class: 'wrap' }, q.typical_root_cause)
+      );
+      tb.append(tr);
+    }
+    const tot = rows.reduce((a, q) => a + q.exposure_cents, 0);
+    $('#q-count').textContent = `${rows.length} items · ${usdFull(tot)}`;
+    $('#q-more').textContent = showAll ? 'Show fewer' : `Show all ${rows.length}`;
+    $('#q-more').style.display = rows.length > 25 ? '' : 'none';
+    for (const th of document.querySelectorAll('#queue th.sortable')) th.setAttribute('aria-sort', th.dataset.k === sortKey ? (sortDir < 0 ? 'descending' : 'ascending') : 'none');
+    renderAging(rows);
+  }
+  const BUCKETS = ['0-1d', '2-3d', '4-7d', '8-30d', '30d+'];
+  function renderAging(rows) {
+    const box = $('#aging'); box.innerHTML = '';
+    const total = rows.length || 1;
+    const bar = el('div', { class: 'bar' }), keys = el('div', { class: 'keys' });
+    BUCKETS.forEach((b, i) => {
+      const n = rows.filter(q => q.aging_bucket === b).length, c = rows.filter(q => q.aging_bucket === b).reduce((a, q) => a + q.exposure_cents, 0);
+      if (n) { const seg = el('div', { class: 'b' + (i + 1), style: `flex:${n}`, title: `${b}: ${n} items, ${usdFull(c)}` }); seg.addEventListener('mousemove', ev => showTip(`<div class="t">${b}</div><div class="row"><span>items</span><span class="v">${n}</span></div><div class="row"><span>exposure</span><span class="v">${usdFull(c)}</span></div>`, ev.clientX, ev.clientY)); seg.addEventListener('mouseleave', hideTip); bar.append(seg); }
+      keys.append(el('span', {}, el('i', { class: 'b' + (i + 1) }), `${b} `, el('b', { class: 'mono' }, String(n))));
+    });
+    box.append(bar, keys);
+    const breached = rows.filter(q => q.is_sla_breached).length;
+    box.append(el('div', { class: 'muted', style: 'font-size:12.5px' }, `${breached} of ${rows.length} past SLA (${Math.round(breached / total * 100)}%). Roughly 3% of breaks are simulated as never resolving, so the 30d+ bucket is where the aged tail lives.`));
+    const it = D.in_transit.filter(t => rail === 'all' || t.flow_type === rail);
+    const n = it.reduce((a, t) => a + t.items, 0), c = it.reduce((a, t) => a + t.exposure_cents, 0);
+    const ps = it.filter(t => t.break_code === 'partially_settled').reduce((a, t) => a + t.items, 0);
+    $('#transit-note').innerHTML = `<b>${n.toLocaleString()} items, ${usdFull(c)}</b> are in transit and not in this queue${ps ? `, ${ps} of them partially settled` : ''}. They are on the bank rec as a reconciling item and will clear on their own; raising them would train the team to ignore the list.`;
+  }
+  for (const th of document.querySelectorAll('#queue th.sortable')) th.addEventListener('click', () => { if (sortKey === th.dataset.k) sortDir = -sortDir; else { sortKey = th.dataset.k; sortDir = th.dataset.k === 'exposure_cents' || th.dataset.k.endsWith('_bd') || th.dataset.k.endsWith('_days') ? -1 : 1; } renderQueue(); });
+  for (const id of ['#f-sev', '#f-owner', '#f-code', '#f-sla']) $(id).addEventListener('change', () => { showAll = false; renderQueue(); });
+  $('#q-more').addEventListener('click', () => { showAll = !showAll; renderQueue(); });
+
+  // ------------------------------------------------------------ tie-out
+  function renderBridge() {
+    const rows = D.tieout.latest.filter(t => rail === 'all' || t.flow_type === rail);
+    const sum = k => rows.reduce((a, t) => a + t[k], 0);
+    const t = Object.fromEntries(['bank_balance_cents', 'in_transit_cents', 'unmatched_internal_cents', 'at_bank_awaiting_book_cents', 'unmatched_external_cents', 'variance_over_tolerance_cents', 'tolerated_variance_cents', 'gl_balance_cents', 'difference_cents', 'unexplained_difference_cents', 'open_queue_cents', 'awaiting_correction_cents'].map(k => [k, sum(k)]));
+    $('#bridge-title').textContent = rail === 'all' ? 'Four-column bridge, all rails' : `Four-column bridge, ${RAIL_NAME[rail]}`;
+    $('#bridge-date').textContent = rows[0]?.run_date || '';
+    const foots = t.unexplained_difference_cents === 0; const f = $('#bridge-foots'); f.className = 'foots' + (foots ? '' : ' bad'); f.lastChild.textContent = foots ? 'foots to the cent' : `does not foot: ${usdFull(t.unexplained_difference_cents)}`;
+    const tb = $('#bridge'); tb.innerHTML = '';
+    const line = (label, v, cls) => { const tr = el('tr', { class: cls || '' }, el('td', {}, label), el('td', { class: 'num' + (v < 0 ? ' neg' : '') }, usdFull(v))); tb.append(tr); };
+    line('Balance per bank', t.bank_balance_cents, 'head');
+    line('+ booked, not yet at the bank (in transit)', t.in_transit_cents);
+    line('+ booked, nothing at the bank (internal orphans)', t.unmatched_internal_cents);
+    line('− at the bank ahead of the books', -t.at_bank_awaiting_book_cents);
+    line('− at the bank, not booked (external orphans)', -t.unmatched_external_cents);
+    line('+ variances on matched pairs, over tolerance', t.variance_over_tolerance_cents);
+    line('+ differences absorbed by tolerance', t.tolerated_variance_cents);
+    line('= Balance per books (GL)', t.gl_balance_cents, 'foot');
+    line('Unexplained', t.unexplained_difference_cents, 'sub');
+    $('#await-note').innerHTML = `Of the <b>${usdFull(t.difference_cents)}</b> difference, <b>${usdFull(t.open_queue_cents)}</b> is open work in the queue and <b>${usdFull(t.awaiting_correction_cents)}</b> is <b>awaiting correction</b> — explained and assigned, still in the clearing account because no entry has posted. That balance ages into account 1095 and is the first thing an auditor asks about.`;
+  }
+  function renderClose() {
+    const tb = $('#close tbody'); tb.innerHTML = '';
+    const rows = D.close.filter(c => rail === 'all' || c.flow_type === rail);
+    const months = [...new Set(rows.map(c => c.close_month))].sort();
+    for (const mth of months.slice(-4)) {
+      for (const c of rows.filter(r => r.close_month === mth)) {
+        const st = c.close_status.split(' - ');
+        tb.append(el('tr', {},
+          el('td', { class: 'mono' }, mth.slice(0, 7)),
+          el('td', {}, el('span', { class: 'pill ' + c.flow_type }, RAIL_NAME[c.flow_type])),
+          el('td', { class: 'num' }, String(c.opening_breaks)), el('td', { class: 'num' }, '+' + c.opened_breaks), el('td', { class: 'num' }, '−' + c.closed_breaks),
+          el('td', { class: 'num', style: 'font-weight:600' }, String(c.open_breaks) + (c.rollforward_gap ? ` (gap ${c.rollforward_gap})` : '')),
+          el('td', { class: 'num muted' }, String(c.raised_and_cleared_in_period)),
+          el('td', { class: 'num' + (Math.abs(c.awaiting_correction_cents) > V.close_materiality_cents ? ' breach' : '') }, usdFull(c.awaiting_correction_cents)),
+          el('td', {}, el('span', { class: 'chip ' + (st[0] === 'clean' ? 'good' : st[0] === 'blocked' ? 'critical' : 'warning'), title: c.close_status }, el('i', { class: 'dot' }), st[0]))
+        ));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------ scorecard
+  function renderScore() {
+    const box = $('#score'); box.innerHTML = '';
+    for (const h of ['Injected break type', 'n', 'Recall', 'Missed']) box.append(el('div', { class: 'h' + (h === 'n' || h === 'Missed' ? ' v' : '') }, h));
+    const rows = D.scorecard.transaction.filter(s => rail === 'all' || s.flow_type === rail);
+    for (const r of RAILS) {
+      const rs = rows.filter(s => s.flow_type === r); if (!rs.length) continue;
+      box.append(el('div', { class: 'grp eyebrow rail-' + r }, RAIL_NAME[r]));
+      rs.sort((a, b) => (a.recall ?? 2) - (b.recall ?? 2) || b.n - a.n);
+      for (const s of rs) {
+        const nonBreak = s.recall == null;
+        const v = nonBreak ? (s.fp === 0 ? 1 : 1 - s.fp / s.n) : s.recall;
+        box.append(
+          el('div', { class: 'name', title: s.subject }, s.subject.replace(/_/g, ' '), nonBreak ? el('small', {}, ' · not a break') : ''),
+          el('div', { class: 'v mono' }, String(s.n)),
+          el('div', { class: 'track' }, el('div', { class: v >= 0.9995 ? 'full' : '', style: `width:${(v * 100).toFixed(1)}%;background:${nonBreak ? 'var(--muted)' : v >= 0.98 ? railColor(r) : v >= 0.8 ? 'var(--warning)' : 'var(--critical)'}` }), el('div', { class: 'floor', style: 'left:98%' })),
+          el('div', { class: 'v mono' }, nonBreak ? el('small', {}, `${s.fp} raised`) : (s.recall >= 0.9995 ? el('small', {}, '1.000') : `${s.recall.toFixed(3)} `), nonBreak ? '' : s.fn ? el('small', {}, ` ${usd(s.missed_exposure_cents)}`) : '')
+        );
+      }
+    }
+    const kv = $('#verdicts'); kv.innerHTML = '';
+    const tp = D.scorecard.transaction.reduce((a, s) => a + s.tp, 0), fn = D.scorecard.transaction.reduce((a, s) => a + s.fn, 0), fp = D.scorecard.transaction.reduce((a, s) => a + s.fp, 0), tn = D.scorecard.transaction.reduce((a, s) => a + s.tn, 0);
+    for (const [k, v] of [['True breaks raised', tp], ['True breaks missed', fn], ['Non-breaks raised (false alarms)', fp], ['Non-breaks left alone', tn], ['Precision', H.precision.toFixed(4)], ['Recall', H.recall.toFixed(4)]]) kv.append(el('dt', {}, k), el('dd', { class: 'mono' }, String(typeof v === 'number' ? v.toLocaleString() : v)));
+    kv.append(el('dt', {}, 'Irreducible'), el('dd', { class: 'ink2', style: 'font-size:12.5px' }, 'Most of the misses are late ACH settlements in a lag band shared with legitimate in-transit items — no age threshold separates them without raising fourteen false alarms per real one. See RCA-003.'));
+    const tb = $('#tiers tbody'); tb.innerHTML = '';
+    for (const m of D.scorecard.match.filter(s => rail === 'all' || s.flow_type === rail)) tb.append(el('tr', {}, el('td', { class: 'mono' }, m.subject.replace(/^tier_(\d)_/, 'T$1 ')), el('td', {}, el('span', { class: 'pill ' + m.flow_type }, RAIL_NAME[m.flow_type])), el('td', { class: 'num' }, m.n.toLocaleString()), el('td', { class: 'num' + (m.fp ? ' breach' : '') }, String(m.fp)), el('td', { class: 'num' }, m.precision.toFixed(4))));
+  }
+
+  // ------------------------------------------------------------ profile
+  function renderProfile() {
+    const box = $('#profile'); box.innerHTML = '';
+    const maxD = Math.max(6, ...D.profile.map(p => p.ceiling_bd));
+    for (const p of D.profile) {
+      const W = 600, Hh = 44, l = 10, r = 30, x = d => l + d / maxD * (W - l - r);
+      const s = svgEl('svg', { class: 'lag', viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': `${RAIL_NAME[p.flow_type]}: contractual T+${p.policy_window_bd}, observed p99 T+${p.lag_p99_bd}, investigation threshold ${p.investigation_threshold_bd} business days` });
+      s.append(svgEl('rect', { class: 'band', x: x(0), y: 12, width: x(p.investigation_threshold_bd) - x(0), height: 16, rx: 3 }));
+      s.append(svgEl('line', { class: 'axis', x1: x(0), x2: x(maxD), y1: 28, y2: 28 }));
+      for (let d = 0; d <= maxD; d++) { s.append(svgEl('line', { class: 'tick', x1: x(d), x2: x(d), y1: 28, y2: 32 })); const t = svgEl('text', { x: x(d), y: 42, 'text-anchor': 'middle' }); t.textContent = 'T+' + d; s.append(t); }
+      s.append(svgEl('line', { class: 'thr', x1: x(p.investigation_threshold_bd), x2: x(p.investigation_threshold_bd), y1: 8, y2: 32 }));
+      s.append(svgEl('circle', { class: 'p99', cx: x(p.lag_p99_bd), cy: 20, r: 5 }));
+      s.append(svgEl('circle', { class: 'policy', cx: x(p.policy_window_bd), cy: 20, r: 5 }));
+      const lbl = svgEl('text', { class: 'lbl', x: x(p.investigation_threshold_bd) + 6, y: 12 }); lbl.textContent = `late from day ${p.investigation_threshold_bd}` + (p.threshold_is_capped ? ' (capped)' : ''); s.append(lbl);
+      const tail = p.tail_over_policy_bd > 0 ? el('span', { class: 'chip warning', style: 'margin-left:8px' }, el('i', { class: 'dot' }), `p99 runs ${p.tail_over_policy_bd} bd past contract`) : el('span', { class: 'chip good', style: 'margin-left:8px' }, el('i', { class: 'dot' }), 'within contract');
+      box.append(el('div', { class: 'rail rail-' + p.flow_type }, RAIL_NAME[p.flow_type]), el('div', {}, el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)' }, `${p.observed_pairs.toLocaleString()} clean pairs · policy T+${p.policy_window_bd} · p50 T+${Math.round(p.lag_p50_bd)} · p99 T+${Math.round(p.lag_p99_bd)} · max T+${p.lag_max_bd}` + (p.observed_splits ? ` · ${p.observed_splits} split settlements, ${p.partial_completion_threshold_bd} bd to complete` : ''), tail), s));
+    }
+  }
+
+  // ------------------------------------------------------------ findings
+  const base = 'https://github.com/rizvi14/portfolio/blob/main/projects/recon-control-tower/docs/rca/';
+  const F = [
+    ['RCA-001', 'RCA-001-duplicate-ach-returns.md', 'ACH returns posted twice', '148 returns, seconds apart, $4.4M ledger overstatement. Found by the tier-2 aggregate ratio; root cause is a return handler with no idempotency key.'],
+    ['RCA-002', 'RCA-002-interchange-gross-vs-net.md', 'Interchange, and what tolerance was hiding', 'Card settles net; the ledger books gross. A 250 bps tolerance hid all 1,486 of them — and every wire lifting fee. Tolerance is now per rail; wire is zero.'],
+    ['RCA-003', 'RCA-003-wire-cutoff-and-the-business-day-clock.md', 'Post-cutoff wires and a clock that could not see weekends', "DuckDB's date_diff('week') is days ÷ 7, so Friday → Monday read as three business days on every rail. Snowflake counts boundaries. Same SQL, two answers."],
+    ['RCA-004', 'RCA-004-noc-name-change-recall.md', 'Notification of Change', 'The bank is allowed to rewrite the counterparty name. Keying identity on the account recovers 114/114; on the name, 32/114.'],
+  ];
+  $('#findings').append(...F.map(([id, f, t, d]) => el('a', { class: 'finding', href: base + f }, el('div', { class: 'id' }, id), el('h3', {}, t), el('p', {}, d))));
+
+  // ------------------------------------------------------------ wiring
+  function renderAll() { renderHeadline(); renderCharts(); renderQueue(); renderBridge(); renderClose(); renderScore(); }
+  for (const b of document.querySelectorAll('#rail-seg button')) b.addEventListener('click', () => { rail = b.dataset.rail; for (const o of document.querySelectorAll('#rail-seg button')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); showAll = false; renderAll(); });
+  renderAll(); renderProfile();
+  if (window.matchMedia) { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll); }
+  new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+</body>
+</html>
