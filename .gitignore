@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+service-account*.json
+
+# Data — keep the repo light; commit only small sample extracts
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+!data/**/sample_*.csv
+*.parquet
+*.db
+*.sqlite3
+*.xlsx
+*.zip
+
+# Tooling / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.ruff_cache/
+.pytest_cache/
+dbt_packages/
+target/
+logs/
