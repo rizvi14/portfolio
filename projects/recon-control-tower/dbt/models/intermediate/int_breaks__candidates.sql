@@ -135,7 +135,13 @@ timing as (
         null::varchar                                       as counterparty_norm,
         null::varchar                                       as gl_account_code
     from matches
-    where is_within_tolerance and had_timing_gap
+    -- Every pair whose two sides landed on different days, not just the clean
+    -- ones. A pair that will turn out to be a variance is still an in-transit
+    -- item first: the ledger has booked it and the bank has not reported it.
+    -- Leaving those days uncovered puts real dollars of ledger-to-bank
+    -- difference outside the exception queue, and fct_gl_tieout would then
+    -- have a gap it could not attribute to anything.
+    where had_timing_gap
 ),
 
 unioned as (

@@ -80,6 +80,27 @@ open_as_of as (
     left join threshold th on th.flow_type = c.flow_type
 ),
 
+-- What this open item does to the gap between the ledger and the bank, as of
+-- this run. Only legs that have actually ARRIVED by the run date count, which
+-- is what makes a half-settled split contribute its remainder rather than its
+-- whole. Internal adds, external subtracts, so the column sums straight into
+-- the four-column bank reconciliation in fct_gl_tieout.
+impact as (
+    select
+        o.run_date,
+        o.break_id,
+        coalesce(sum(
+            case when e.side = 'internal' then e.signed_amount_cents
+                 else -e.signed_amount_cents end
+        ) filter (where e.available_from <= o.run_date), 0)                     as gl_impact_cents
+    from (
+        select run_date, break_id, unnest(event_ids) as event_id
+        from open_as_of
+    ) o
+    join {{ ref('int_recon_events__unioned') }} e using (event_id)
+    group by all
+),
+
 classified as (
     select
         *,
@@ -121,6 +142,7 @@ select
     c.side,
     c.exposure_cents,
     c.variance_cents,
+    coalesce(i.gl_impact_cents, 0)                                      as gl_impact_cents,
     c.event_date,
     c.open_from,
     c.open_until,
@@ -140,3 +162,4 @@ select
     t.is_true_break and c.sla_clock_bd > t.sla_business_days            as is_sla_breached
 from classified c
 left join taxonomy t on t.break_code = c.break_code
+left join impact i on i.run_date = c.run_date and i.break_id = c.break_id

@@ -117,3 +117,64 @@ models:
         description: >
           Dollars in defects the pipeline did not raise. The number to put in
           front of a risk committee, rather than a percentage.
+
+  - name: fct_gl_tieout
+    description: >
+      The four-column bank reconciliation per rail, for every run date: balance
+      per bank, plus every named reconciling item, equals balance per books.
+      Built from match state rather than from the exception queue, because an
+      item leaves the queue when someone adjudicates it and leaves the clearing
+      account only when a correcting entry posts - a bridge built on open items
+      stops footing the moment the team starts working.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [run_date, flow_type]
+    columns:
+      - name: unexplained_difference_cents
+        description: >
+          The footing check. Zero by construction, which is the point: it
+          catches a join that fans out or a leg counted twice, not a business
+          condition.
+        data_tests: [not_null]
+      - name: tolerated_variance_cents
+        description: >
+          Differences the tolerance policy chose to stop looking at. They do
+          not disappear - they accumulate here, which is the honest cost of
+          every basis point of tolerance.
+      - name: awaiting_correction_cents
+        description: >
+          Identified, adjudicated, and still in the clearing account because
+          nothing has been posted to clear it. The only slice of the difference
+          with no next step scheduled, and the first thing an auditor asks
+          about.
+
+  - name: rpt_close_summary
+    description: >
+      The month-end package: does the tie-out foot, what is left in the
+      clearing account and why, and did the exception population move the way
+      it says it did. Cut on the last RUN date in each calendar month, because
+      a reconciliation that never ran cannot be reported on.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination: [close_month, flow_type]
+    columns:
+      - name: rollforward_gap
+        description: >
+          opening + opened - closed - closing. Zero, or the queue lost items
+          nobody can name.
+        data_tests: [not_null]
+      - name: raised_and_cleared_in_period
+        description: >
+          Exceptions that came and went between the two balance dates. Outside
+          the roll-forward identity on purpose - a queue that looks quiet at
+          month end can still have been working hard all month.
+      - name: close_status
+        description: >
+          Advisory. Blocks on a bridge that does not foot; asks for review on
+          an uncorrected balance over materiality, a critical exception open at
+          close, or anything past SLA. It does not sign the month off - a
+          person does.
+        data_tests:
+          - not_null
